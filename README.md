@@ -3,4 +3,4 @@
 
 [Git/Github CheatSheet](https://philomatics.com/git-cheatsheet-release)
 
-Joey Shaloom Rutozi - 149772
+Joey Shaloom Rutozi 149772
