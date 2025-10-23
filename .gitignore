@@ -1,1 +1,25 @@
+# Python
+__pycache__/
+.ipynb_checkpoints/
+
+# Local data + training artifacts (keep these on Drive, not GitHub)
+data/
+tfrecords/
+checkpoints/
+train_runs/
+exports/
+
+# Tooling caches / vendor repos
+models/
+protoc/
+
+# Archives / binaries
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.ckpt*
+*.tfrecord
+*.pb
+*.tflite
 
