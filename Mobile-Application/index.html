@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Road Crossing Guide - Safe Navigation for the Visually Impaired</title>
+    <meta name="description" content="AI-powered mobile application that helps visually impaired people cross roads safely using real-time camera detection and audio guidance">
+    <meta name="keywords" content="blind navigation, road crossing, accessibility, visual impairment, AI detection">
+
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react@18/umd/react.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
+
+    <style type="text/tailwindcss">
+    @layer theme {
+        :root {
+            --primary-color: #10b981;
+            --secondary-color: #1f2937;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --bg-light: #f9fafb;
+            --bg-dark: #111827;
+        }
+    }
+
+    @layer base {
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+    }
+
+    @layer components {
+        .status-card {
+            @apply w-full h-full flex flex-col items-center justify-center p-8 rounded-3xl shadow-2xl;
+        }
+        
+        .icon-large {
+            @apply w-32 h-32 rounded-full flex items-center justify-center mb-6;
+        }
+    }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" src="components/StatusDisplay.js"></script>
+    <script type="text/babel" src="components/SettingsPanel.js"></script>
+    <script type="text/babel" src="utils/audioGuide.js"></script>
+    <script type="text/babel" src="utils/hapticFeedback.js"></script>
+    <script type="text/babel" src="app.js"></script>
+</body>
+</html>
