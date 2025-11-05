@@ -46,25 +46,45 @@ function App() {
       hapticEnabled: true
     });
     const detectionTimeoutRef = React.useRef(null);
+    const cameraHandlerRef = React.useRef(null);
 
-    const handleActivate = () => {
+    const handleActivate = async () => {
       setIsActive(true);
       if (settings.soundEnabled && settings.voiceGuidance) {
         speakMessage('Application activated. Point camera at the road.');
       }
+      
+      cameraHandlerRef.current = new CameraHandler();
+      const initialized = await cameraHandlerRef.current.initialize();
+      
+      if (!initialized) {
+        if (settings.soundEnabled && settings.voiceGuidance) {
+          speakMessage('Camera access denied. Using mock detection.');
+        }
+      }
+      
       startDetection();
     };
 
-    const startDetection = () => {
+    const startDetection = async () => {
       if (isPaused) return;
       
-      detectionTimeoutRef.current = setTimeout(() => {
-        if (!isPaused) {
-          const statuses = ['safe', 'caution', 'wait'];
-          const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-          updateRoadStatus(randomStatus);
+      try {
+        let result;
+        if (cameraHandlerRef.current && cameraHandlerRef.current.stream) {
+          const frame = await cameraHandlerRef.current.captureFrame();
+          result = await analyzeRoadCondition(frame);
+        } else {
+          result = await analyzeRoadCondition(null);
         }
-      }, 2000);
+        
+        if (!isPaused) {
+          updateRoadStatus(result.status);
+        }
+      } catch (error) {
+        console.error('Detection error:', error);
+        detectionTimeoutRef.current = setTimeout(() => startDetection(), 2000);
+      }
     };
 
     const updateRoadStatus = (status) => {
@@ -116,6 +136,9 @@ function App() {
       return () => {
         if (detectionTimeoutRef.current) {
           clearTimeout(detectionTimeoutRef.current);
+        }
+        if (cameraHandlerRef.current) {
+          cameraHandlerRef.current.stop();
         }
       };
     }, []);

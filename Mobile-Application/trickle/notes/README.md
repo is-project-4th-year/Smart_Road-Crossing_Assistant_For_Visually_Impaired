@@ -18,7 +18,14 @@ An AI-powered mobile application designed to help visually impaired individuals 
 - TailwindCSS
 - Web Speech API
 - Vibration API
-- MobileNetV2 SSD (detection model)
+- Camera API (MediaDevices)
+- MobileNetV2 SSD (detection model - backend integration ready)
+
+## API Integration
+- Camera capture utility for frame processing
+- Model API connector for backend integration
+- Mock detection for testing without backend
+- See `API_INTEGRATION_GUIDE.md` for full integration instructions
 
 ## Status Indicators
 1. **Safe** (Green): Safe to cross with voice "Safe to Go"
