@@ -11,13 +11,13 @@ Camera Feed → CameraHandler → Model API → Status Update → UI + Audio + H
 ## Backend Requirements
 
 ### 1. API Endpoint
-Your backend should provide a REST API endpoint that accepts images and returns detection results.
+Backend should provide a REST API endpoint that accepts images and returns detection results.
 
 **Endpoint Format:**
 ```
-POST https://your-backend-api.com/predict
-Content-Type: multipart/form-data
-Authorization: Bearer YOUR_API_KEY
+POST https:
+Content-Type: 
+Authorization: 
 ```
 
 **Request Body:**
@@ -28,7 +28,7 @@ Authorization: Bearer YOUR_API_KEY
 ```
 
 ### 2. Response Format
-Your API must return JSON in this format:
+API must return JSON in this format:
 
 ```json
 {
@@ -45,9 +45,9 @@ Your API must return JSON in this format:
 - `"wait"` - Uncertain conditions, wait for clearer view
 
 ### 3. Model Deployment Options
-- **Cloud:** AWS SageMaker, Google Cloud AI Platform, Azure ML
+- **Cloud:** 
 - **Edge:** TensorFlow Lite on mobile device
-- **Server:** Flask/FastAPI with TensorFlow Serving
+- **Server:** FastAPI with TensorFlow Serving
 
 ## Frontend Integration Steps
 
@@ -56,27 +56,13 @@ Edit `utils/modelAPI.js`:
 
 ```javascript
 const MODEL_API_CONFIG = {
-  endpoint: 'https://your-actual-backend.com/predict',
+  endpoint: 
   timeout: 5000,
   retryAttempts: 3
 };
 ```
 
-### Step 2: Add Authentication
-If your API requires authentication, update the fetch call:
-
-```javascript
-const response = await fetch(MODEL_API_CONFIG.endpoint, {
-  method: 'POST',
-  body: formData,
-  headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
-    // Add other headers as needed
-  }
-});
-```
-
-### Step 3: Replace Mock Implementation
+### Step 2: Replace Mock Implementation
 In `utils/modelAPI.js`, uncomment the real API call and remove the mock:
 
 ```javascript
@@ -92,7 +78,7 @@ const response = await fetch(MODEL_API_CONFIG.endpoint, {
 });
 ```
 
-### Step 4: Test Integration
+### Step 3: Test Integration
 1. Deploy your backend API
 2. Update the endpoint URL
 3. Test camera permissions
@@ -134,5 +120,3 @@ The app handles these scenarios:
 
 For frontend issues: Check browser console for errors
 For backend issues: Review server logs and API response format
-
-Current mock implementation will continue working until you're ready to integrate your actual model.
