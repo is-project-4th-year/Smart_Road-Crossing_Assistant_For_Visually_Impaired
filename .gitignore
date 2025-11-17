@@ -23,3 +23,30 @@ protoc/
 *.zip
 *.tar
 *.tar.gz
+
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Capacitor build
+capacitor.config.ts
+www/
+
+# Android build
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/captures/
+
+# IDEA/Studio files
+.idea/
+*.iml
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
