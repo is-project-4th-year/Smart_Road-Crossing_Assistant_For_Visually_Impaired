@@ -13,6 +13,7 @@ exports/
 *.index
 *.data-*
 *.pb
+#*.tflite
 
 # misc
 __pycache__/
