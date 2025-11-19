@@ -17,7 +17,7 @@ exports/
 # misc
 __pycache__/
 .ipynb_checkpoints/
-models/
+#models/
 protoc/
 *.zip
 *.tar
