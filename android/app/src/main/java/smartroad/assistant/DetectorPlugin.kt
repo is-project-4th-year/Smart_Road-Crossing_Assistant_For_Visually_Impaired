@@ -43,6 +43,11 @@ class DetectorPlugin : Plugin() {
     private var objectDetector: ObjectDetector? = null
     private var lastDetections: Map<Int, DetectionTrack> = emptyMap()
 
+    private var lastDangerTime: Long = 0
+    private var lastGreenLightTime: Long = 0
+    // How long to "remember" a danger after it disappears (milliseconds)
+    private val DEBOUNCE_MS = 2000L
+
     private data class DetectionTrack(
         val id: Int,
         val cx: Float,
@@ -111,13 +116,20 @@ class DetectorPlugin : Plugin() {
                 options
             )
         } catch (e: Exception) {
-            // Fallback without delegate if NNAPI fails
+            android.util.Log.e("DetectorPlugin", "NNAPI failed, falling back to CPU", e)
+
+            // --- FIX STARTS HERE ---
             val cpuBase = BaseOptions.builder()
                 .setNumThreads(4)
                 .build()
-            val cpuOptions = options.toBuilder()
+
+            // Create a NEW builder from scratch (cannot use toBuilder)
+            val cpuOptions = ObjectDetector.ObjectDetectorOptions.builder()
                 .setBaseOptions(cpuBase)
+                .setMaxResults(10)       // Re-apply setting
+                .setScoreThreshold(0.35f) // Re-apply setting
                 .build()
+
             ObjectDetector.createFromFileAndOptions(
                 context,
                 "models/road_crossing_ssd_mnv2_fp16.tflite",
@@ -166,12 +178,26 @@ class DetectorPlugin : Plugin() {
         }
 
         try {
+            android.util.Log.v("DetectorPlugin", "Processing frame...")
 
             val frameBitmap = imageProxy.toBitmap()
             // Convert to TensorImage
             val tfImage = TensorImage.fromBitmap(frameBitmap)
 
             val results = detector.detect(tfImage)
+
+            android.util.Log.d("DetectorPlugin", "Found ${results.size} objects")
+
+
+            if (results.isNotEmpty()) {
+                android.util.Log.d("DetectorPlugin", "--- New Frame ---")
+                for (det in results) {
+                    val label = det.categories.firstOrNull()?.label ?: "Unknown"
+                    val score = det.categories.firstOrNull()?.score ?: 0f
+                    // Log every object detected
+                    android.util.Log.d("DetectorPlugin", "DETECTED: $label (Confidence: $score)")
+                }
+            }
 
             val now = System.currentTimeMillis()
 
@@ -234,22 +260,33 @@ class DetectorPlugin : Plugin() {
 
             lastDetections = currentTracks
 
-            // Decision logic according to your table
-            val decision = when {
-                hasGreenLight && !movingVehicle -> "SAFE"
-                hasRedLight || movingVehicle    -> "DANGER"
-                unclearSignal                   -> "TRANSITION"
-                stationaryVehicle               -> "PREPARING"
-                else                            -> "TRANSITION"
+            // 1. Update "Memory" timestamps
+            if (movingVehicle || hasRedLight) {
+                lastDangerTime = now
             }
+            if (hasGreenLight) {
+                lastGreenLightTime = now
+            }
+
+// 2. Check if we are still in the "grace period"
+            val recentDanger = (now - lastDangerTime) < DEBOUNCE_MS
+            val recentGreen = (now - lastGreenLightTime) < DEBOUNCE_MS
+
+            val decision = when {
+                recentDanger    -> "DANGER"       // Stays DANGER for 2s even if object vanishes
+                stationaryVehicle -> "PREPARING"  // Car waiting/stopped
+                recentGreen     -> "SAFE"         // Stays SAFE if we recently saw green
+                else            -> "TRANSITION"   // Default if nothing is seen
+            }
+
 
             // Emit compact event to JS
             val data = JSObject().apply {
                 put("ts", now)
                 put("decision", decision)
+                // Send raw flags for debugging UI if needed
                 put("movingVehicle", movingVehicle)
-                put("stationaryVehicle", stationaryVehicle)
-                put("unclearSignal", unclearSignal)
+                put("hasRedLight", hasRedLight)
             }
 
             notifyListeners("detectorUpdate", data)
