@@ -1,8 +1,11 @@
 package smartroad.assistant
 
 import android.Manifest
-import android.content.pm.PackageManager
+import android.graphics.*
+import android.os.Build
+import android.util.Base64
 import android.util.Size
+import androidx.annotation.RequiresApi
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
@@ -10,31 +13,19 @@ import com.getcapacitor.*
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import org.json.JSONArray
 import org.json.JSONObject
-import org.tensorflow.lite.support.image.TensorImage
-import org.tensorflow.lite.task.core.BaseOptions
-import org.tensorflow.lite.task.vision.detector.ObjectDetector
+import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import kotlin.math.hypot
-import android.graphics.Bitmap
-import android.graphics.ImageFormat
-import android.graphics.Rect
-import android.graphics.RectF
-import android.graphics.YuvImage
-import android.graphics.Color
-import android.os.Build
-import androidx.annotation.RequiresApi
-import java.io.ByteArrayOutputStream
-
+import kotlin.concurrent.thread
 
 @CapacitorPlugin(
     name = "DetectorPlugin",
     permissions = [
-        Permission(
-            alias = "camera",
-            strings = [Manifest.permission.CAMERA]
-        )
+        Permission(alias = "camera", strings = [Manifest.permission.CAMERA])
     ]
 )
 class DetectorPlugin : Plugin() {
@@ -55,24 +46,19 @@ class DetectorPlugin : Plugin() {
         val ts: Long
     )
 
-    @RequiresApi(Build.VERSION_CODES.O)
     @PluginMethod
     fun startStream(call: PluginCall) {
-        if (cameraExecutor == null) {
-            cameraExecutor = Executors.newSingleThreadExecutor()
-        }
-
         if (!hasRequiredPermissions()) {
-            requestAllPermissions(call, "onPermResult")
+            requestAllPermissions(call, "cameraPermsCallback")
             return
         }
 
         try {
-            loadDetector()
             startCamera()
-            call.resolve()
+            call.resolve(JSObject().put("status", "streaming"))
         } catch (e: Exception) {
-            call.reject("Failed to start stream: ${e.message}", e)
+            android.util.Log.e("DetectorPlugin", "Failed to start camera", e)
+            call.reject("Failed to start camera: ${e.message}")
         }
     }
 
@@ -80,41 +66,18 @@ class DetectorPlugin : Plugin() {
     fun stopStream(call: PluginCall) {
         cameraExecutor?.shutdown()
         cameraExecutor = null
-        // CameraX will be unbound automatically when activity is destroyed;
-        // you can also explicitly unbind if needed.
-        call.resolve()
+        call.resolve(JSObject().put("status", "stopped"))
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     @PermissionCallback
-    fun onPermResult(call: PluginCall) {
+    private fun cameraPermsCallback(call: PluginCall) {
         if (!hasRequiredPermissions()) {
-            call.reject("Camera permission not granted")
+            call.reject("Camera permission denied")
             return
         }
-        startStream(call)
-    }
-
-    private fun loadDetector() {
-        if (objectDetector != null) return
-
-        val baseOptions = BaseOptions.builder()
-            .setNumThreads(4)
-            .useNnapi()            // try NNAPI; fall back below if unsupported
-            .build()
-
-        val options = ObjectDetector.ObjectDetectorOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setMaxResults(10)
-            .setScoreThreshold(0.35f)
-            .build()
-
-        objectDetector = try {
-            ObjectDetector.createFromFileAndOptions(
-                context,
-                "models/road_crossing_ssd_mnv2_fp16.tflite",
-                options
-            )
+        try {
+            startCamera()
+            call.resolve(JSObject().put("status", "streaming"))
         } catch (e: Exception) {
             android.util.Log.e("DetectorPlugin", "NNAPI failed, falling back to CPU", e)
 
@@ -146,37 +109,34 @@ class DetectorPlugin : Plugin() {
             val cameraProvider = cameraProviderFuture.get()
             val preview = Preview.Builder().build()
 
-            // You need a PreviewView in MainActivity layout; here we bind only analysis
-            val analysis = ImageAnalysis.Builder()
+            val imageAnalysis = ImageAnalysis.Builder()
                 .setTargetResolution(Size(640, 640))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
 
-            analysis.setAnalyzer(cameraExecutor!!) { imageProxy ->
+            imageAnalysis.setAnalyzer(cameraExecutor!!) { imageProxy ->
                 analyzeFrame(imageProxy)
             }
+
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
             try {
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(
-                    activity,                   // lifecycle
-                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    (activity as androidx.lifecycle.LifecycleOwner),
+                    cameraSelector,
                     preview,
-                    analysis
+                    imageAnalysis
                 )
+                android.util.Log.d("DetectorPlugin", "Camera started successfully")
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("DetectorPlugin", "Camera binding failed", e)
             }
         }, ContextCompat.getMainExecutor(context))
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun analyzeFrame(imageProxy: ImageProxy) {
-        val detector = objectDetector ?: run {
-            imageProxy.close()
-            return
-        }
-
         try {
             android.util.Log.v("DetectorPlugin", "Processing frame...")
 
@@ -253,6 +213,8 @@ class DetectorPlugin : Plugin() {
                             unclearSignal = true
                         }
                     }
+                } catch (e: Exception) {
+                    android.util.Log.e("DetectorPlugin", "Backend request failed", e)
                 }
 
                 currentTracks[id] = DetectionTrack(id, cx, cy, now)
@@ -292,101 +254,92 @@ class DetectorPlugin : Plugin() {
             notifyListeners("detectorUpdate", data)
 
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("DetectorPlugin", "Frame analysis error", e)
         } finally {
             imageProxy.close()
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun ImageProxy.toBitmap(): Bitmap {
-        val yBuffer = planes[0].buffer
-        val uBuffer = planes[1].buffer
-        val vBuffer = planes[2].buffer
-
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-
-        val nv21 = ByteArray(ySize + uSize + vSize)
-
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-
-        val yuvImage = YuvImage(
-            nv21,
-            ImageFormat.NV21,
-            width,
-            height,
-            null
-        )
-
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, width, height), 90, out)
-        val imageBytes = out.toByteArray()
-        return android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+    private fun sendToBackend(bitmap: Bitmap): JSObject? {
+        try {
+            // Convert bitmap to JPEG
+            val stream = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
+            val jpegBytes = stream.toByteArray()
+            
+            // Encode to base64
+            val base64Image = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
+            
+            // Create JSON payload
+            val payload = JSONObject()
+            payload.put("image", base64Image)
+            
+            // Send HTTP POST request
+            val url = URL(BACKEND_URL)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.doOutput = true
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            
+            // Write request body
+            connection.outputStream.use { it.write(payload.toString().toByteArray()) }
+            
+            // Read response
+            if (connection.responseCode == 200) {
+                val response = connection.inputStream.bufferedReader().readText()
+                val jsonResponse = JSONObject(response)
+                
+                // Convert JSON response to JSObject format expected by React
+                return parseBackendResponse(jsonResponse)
+            } else {
+                android.util.Log.e("DetectorPlugin", "Backend returned ${connection.responseCode}")
+            }
+            
+        } catch (e: Exception) {
+            android.util.Log.e("DetectorPlugin", "HTTP request error", e)
+        }
+        
+        return null
     }
 
-    private fun detectTrafficLightColor(frameBitmap: Bitmap, box: RectF): String {
-        val left = box.left.coerceAtLeast(0f).toInt()
-        val top = box.top.coerceAtLeast(0f).toInt()
-        val right = box.right.coerceAtMost(frameBitmap.width.toFloat()).toInt()
-        val bottom = box.bottom.coerceAtMost(frameBitmap.height.toFloat()).toInt()
-
-        if (right <= left || bottom <= top) {
-            return "UNCLEAR"
-        }
-
-        val width = right - left
-        val height = bottom - top
-
-        val stepX = (width / 10).coerceAtLeast(1)
-        val stepY = (height / 10).coerceAtLeast(1)
-
-        var redCount = 0
-        var greenCount = 0
-        var yellowCount = 0
-
-        val hsv = FloatArray(3)
-
-        for (y in top until bottom step stepY) {
-            for (x in left until right step stepX) {
-                val pixel = frameBitmap.getPixel(x, y)
-                Color.colorToHSV(pixel, hsv)
-
-                val h = hsv[0]
-                val s = hsv[1]
-                val v = hsv[2]
-
-                if (v < 0.3f || s < 0.3f) continue
-
-                when {
-                    (h < 20f || h > 340f) -> redCount++
-                    (h in 80f..160f) -> greenCount++
-                    (h in 40f..70f) -> yellowCount++
+    private fun parseBackendResponse(json: JSONObject): JSObject {
+        val result = JSObject()
+        
+        // Extract decision
+        result.put("status", json.optString("decision", "UNKNOWN"))
+        result.put("timestamp", System.currentTimeMillis())
+        
+        // Extract detections array
+        val detectionsArray = json.optJSONArray("detections")
+        val detections = JSArray()
+        
+        if (detectionsArray != null) {
+            for (i in 0 until detectionsArray.length()) {
+                val det = detectionsArray.getJSONObject(i)
+                val detObj = JSObject()
+                
+                // Extract bbox
+                val bboxArray = det.getJSONArray("bbox")
+                val bbox = JSArray()
+                for (j in 0 until bboxArray.length()) {
+                    bbox.put(bboxArray.getDouble(j))
                 }
+                
+                detObj.put("bbox", bbox)
+                detObj.put("class", det.getString("class"))
+                detObj.put("classId", det.getInt("class_id"))
+                detObj.put("score", det.getDouble("score"))
+                
+                detections.put(detObj)
             }
         }
-
-        val total = redCount + greenCount + yellowCount
-        if (total == 0) {
-            return "UNCLEAR"
-        }
-
-        val maxCount = maxOf(redCount, greenCount, yellowCount)
-        val minDominance = (0.3f * total).toInt()
-
-        if (maxCount < minDominance) {
-            return "UNCLEAR"
-        }
-
-        return when (maxCount) {
-            redCount -> "RED"
-            greenCount -> "GREEN"
-            yellowCount -> "YELLOW"
-            else -> "UNCLEAR"
-        }
+        
+        result.put("detections", detections)
+        result.put("trafficLight", json.optString("traffic_light_state", "unknown"))
+        result.put("foundVehicle", json.optBoolean("found_vehicle", false))
+        
+        return result
     }
 }
-

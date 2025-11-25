@@ -1,5 +1,5 @@
 {
   "appId": "smartroad.assistant",
   "appName": "Smart Road-Crossing Assistant",
-  "webDir": "Mobile-Application"
+  "webDir": "mobile-application/dist"
 }
