@@ -31,18 +31,20 @@ import kotlin.concurrent.thread
 class DetectorPlugin : Plugin() {
 
     private var cameraExecutor: ExecutorService? = null
-    private var lastProcessedTime = 0L
-    
-    // Backend configuration
-    private val BACKEND_URL = "http://10.0.2.2:5000/detect"  // Android emulator localhost
-    // For physical device, use: "http://YOUR_LAPTOP_IP:5000/detect"
-    
-    private val FRAME_INTERVAL_MS = 500L  // Process every 500ms (2 FPS)
-    
-    override fun load() {
-        cameraExecutor = Executors.newSingleThreadExecutor()
-        android.util.Log.d("DetectorPlugin", "Plugin loaded - using HTTP backend at $BACKEND_URL")
-    }
+    private var objectDetector: ObjectDetector? = null
+    private var lastDetections: Map<Int, DetectionTrack> = emptyMap()
+
+    private var lastDangerTime: Long = 0
+    private var lastGreenLightTime: Long = 0
+    // How long to "remember" a danger after it disappears (milliseconds)
+    private val DEBOUNCE_MS = 2000L
+
+    private data class DetectionTrack(
+        val id: Int,
+        val cx: Float,
+        val cy: Float,
+        val ts: Long
+    )
 
     @PluginMethod
     fun startStream(call: PluginCall) {
@@ -77,7 +79,25 @@ class DetectorPlugin : Plugin() {
             startCamera()
             call.resolve(JSObject().put("status", "streaming"))
         } catch (e: Exception) {
-            call.reject("Failed to start: ${e.message}")
+            android.util.Log.e("DetectorPlugin", "NNAPI failed, falling back to CPU", e)
+
+            // --- FIX STARTS HERE ---
+            val cpuBase = BaseOptions.builder()
+                .setNumThreads(4)
+                .build()
+
+            // Create a NEW builder from scratch (cannot use toBuilder)
+            val cpuOptions = ObjectDetector.ObjectDetectorOptions.builder()
+                .setBaseOptions(cpuBase)
+                .setMaxResults(10)       // Re-apply setting
+                .setScoreThreshold(0.35f) // Re-apply setting
+                .build()
+
+            ObjectDetector.createFromFileAndOptions(
+                context,
+                "models/road_crossing_ssd_mnv2_fp16.tflite",
+                cpuOptions
+            )
         }
     }
 
@@ -118,31 +138,121 @@ class DetectorPlugin : Plugin() {
     @RequiresApi(Build.VERSION_CODES.O)
     private fun analyzeFrame(imageProxy: ImageProxy) {
         try {
-            // Throttle processing
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastProcessedTime < FRAME_INTERVAL_MS) {
-                imageProxy.close()
-                return
-            }
-            lastProcessedTime = currentTime
+            android.util.Log.v("DetectorPlugin", "Processing frame...")
 
-            // Convert to bitmap and send to backend
-            val bitmap = imageProxy.toBitmap()
-            
-            // Send to backend in separate thread
-            thread {
-                try {
-                    val result = sendToBackend(bitmap)
-                    if (result != null) {
-                        // Notify React app
-                        notifyListeners("detectorUpdate", result)
-                        android.util.Log.d("DetectorPlugin", "Detection: ${result.getString("decision")}")
+            val frameBitmap = imageProxy.toBitmap()
+            // Convert to TensorImage
+            val tfImage = TensorImage.fromBitmap(frameBitmap)
+
+            val results = detector.detect(tfImage)
+
+            android.util.Log.d("DetectorPlugin", "Found ${results.size} objects")
+
+
+            if (results.isNotEmpty()) {
+                android.util.Log.d("DetectorPlugin", "--- New Frame ---")
+                for (det in results) {
+                    val label = det.categories.firstOrNull()?.label ?: "Unknown"
+                    val score = det.categories.firstOrNull()?.score ?: 0f
+                    // Log every object detected
+                    android.util.Log.d("DetectorPlugin", "DETECTED: $label (Confidence: $score)")
+                }
+            }
+
+            val now = System.currentTimeMillis()
+
+            var hasGreenLight = false
+            var hasRedLight = false
+            var movingVehicle = false
+            var stationaryVehicle = false
+            var unclearSignal = false
+
+            val currentTracks = mutableMapOf<Int, DetectionTrack>()
+
+            for (det in results) {
+                val category = det.categories.firstOrNull() ?: continue
+                val label = category.label.lowercase()
+                val score = category.score
+
+                val box = det.boundingBox
+                val cx = box.centerX()
+                val cy = box.centerY()
+
+                // Very simple ID: use hash of position
+                val id = (cx * 1000 + cy).toInt()
+                val prev = lastDetections[id]
+
+                val speed = if (prev != null) {
+                    val dt = (now - prev.ts).coerceAtLeast(1).toFloat() / 1000f
+                    val dist = hypot(cx - prev.cx, cy - prev.cy)
+                    dist / dt // pixels per second
+                } else {
+                    0f
+                }
+
+                val isVehicle = label in listOf("car", "truck", "bus", "motorcycle")
+                val isTrafficLight = label == "traffic light"
+
+                if (isVehicle) {
+                    if (speed > 40f) {
+                        movingVehicle = true
+                    } else {
+                        stationaryVehicle = true
+                    }
+                }
+
+                if (isTrafficLight) {
+                    val color = detectTrafficLightColor(frameBitmap, box)
+                    when (color) {
+                        "GREEN" -> hasGreenLight = true
+                        "RED" -> hasRedLight = true
+                        "YELLOW" -> {
+                            unclearSignal = true
+                        }
+                        else -> {
+                            unclearSignal = true
+                        }
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("DetectorPlugin", "Backend request failed", e)
                 }
+
+                currentTracks[id] = DetectionTrack(id, cx, cy, now)
             }
-            
+
+            lastDetections = currentTracks
+
+            // 1. Update "Memory" timestamps
+            if (movingVehicle || hasRedLight) {
+                lastDangerTime = now
+            }
+            if (hasGreenLight) {
+                lastGreenLightTime = now
+            }
+
+// 2. Check if we are still in the "grace period"
+            val recentDanger = (now - lastDangerTime) < DEBOUNCE_MS
+            val recentGreen = (now - lastGreenLightTime) < DEBOUNCE_MS
+
+            val decision = when {
+                recentDanger    -> "DANGER"       // Stays DANGER for 2s even if object vanishes
+                stationaryVehicle -> "PREPARING"  // Car waiting/stopped
+                recentGreen     -> "SAFE"         // Stays SAFE if we recently saw green
+                else            -> "TRANSITION"   // Default if nothing is seen
+            }
+
+
+            // Emit compact event to JS
+            val data = JSObject().apply {
+                put("ts", now)
+                put("decision", decision)
+                // Send raw flags for debugging UI if needed
+                put("movingVehicle", movingVehicle)
+                put("hasRedLight", hasRedLight)
+            }
+
+            notifyListeners("detectorUpdate", data)
+
         } catch (e: Exception) {
             android.util.Log.e("DetectorPlugin", "Frame analysis error", e)
         } finally {
