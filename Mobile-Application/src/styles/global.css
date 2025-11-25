@@ -1,0 +1,90 @@
+/* ---------------------------------------------------------
+   Global CSS for Smart Road-Crossing Assistant (Vite Build)
+   Tailwind is loaded via CDN in index.html, so no @tailwind
+   directives are needed here.
+---------------------------------------------------------- */
+
+
+/* Theme variables */
+:root {
+  --primary-color: #10b981;
+  --secondary-color: #1f2937;
+
+
+  --danger-color: #ef4444;
+  --warning-color: #f59e0b;
+
+
+  --bg-light: #f9fafb;
+  --bg-dark: #111827;
+}
+
+
+/* Base resets */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+               Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-light);
+  -webkit-font-smoothing: antialiased;
+}
+
+
+/* Prevent images/videos affecting layout unexpectedly */
+img, video {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+
+/* Smooth transitions for dark/light mode backgrounds */
+body, .app-container {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+
+/* Utility: card shadow and rounding enhancements */
+.status-card {
+  border-radius: 1.25rem; /* 3xl */
+  box-shadow: 0px 8px 24px rgba(0,0,0,0.15);
+}
+
+
+/* Utility: circle icons in center */
+.icon-large {
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+/* Hide overflow on full-screen components */
+.fullscreen {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+
+/* Styling for the settings panel scrollbar */
+.settings-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+
+.settings-panel::-webkit-scrollbar-thumb {
+  background-color: rgba(100,100,100,0.4);
+  border-radius: 8px;
+}
+
+
+/* Button haptic UI feedback (optional) */
+button:active {
+  opacity: 0.85;
+  transform: scale(0.98);
+  transition: transform 0.05s ease;
+}
