@@ -1,55 +1,222 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Road Crossing Guide - Safe Navigation for the Visually Impaired</title>
-    <meta name="description" content="AI-powered mobile application that helps visually impaired people cross roads safely using real-time camera detection and audio guidance">
-    <meta name="keywords" content="blind navigation, road crossing, accessibility, visual impairment, AI detection">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Road Crossing Assistant</title>
 
+    <!-- React 18 -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <script src="https://resource.trickle.so/vendor_lib/unpkg/react@18/umd/react.production.min.js"></script>
-    <script src="https://resource.trickle.so/vendor_lib/unpkg/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://resource.trickle.so/vendor_lib/unpkg/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css" rel="stylesheet">
-
-
-    <style type="text/tailwindcss">
-    @layer theme {
-        :root {
-            --primary-color: #10b981;
-            --secondary-color: #1f2937;
-            --danger-color: #ef4444;
-            --warning-color: #f59e0b;
-            --bg-light: #f9fafb;
-            --bg-dark: #111827;
-        }
-    }
-
-
-    @layer base {
-        body {
+    <style>
+        * {
             margin: 0;
             padding: 0;
-            font-family: system-ui, -apple-system, sans-serif;
+            box-sizing: border-box;
         }
-    }
 
+        :root {
+            --primary-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+        }
 
-    @layer components {
-        .status-card {
-            @apply w-full h-full flex flex-col items-center justify-center p-8 rounded-3xl shadow-2xl;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
         }
-       
-        .icon-large {
-            @apply w-32 h-32 rounded-full flex items-center justify-center mb-6;
+
+        #root {
+            width: 100%;
+            height: 100%;
         }
-    }
+
+        /* Full screen status displays */
+        .status-safe {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .status-wait {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .status-caution {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .status-title {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .status-subtitle {
+            font-size: 1.5rem;
+            opacity: 0.9;
+            text-align: center;
+        }
+
+        .status-icon {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 2rem;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+        }
+
+        .settings-btn {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            width: 3.5rem;
+            height: 3.5rem;
+            border-radius: 50%;
+            background: white;
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .settings-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            z-index: 100;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .settings-header {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 2rem;
+            color: #1f2937;
+        }
+
+        .setting-item {
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .setting-label {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+
+        .close-btn {
+            background: #ef4444;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .welcome-screen {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f9fafb;
+        }
+
+        .welcome-content {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .welcome-icon {
+            width: 128px;
+            height: 128px;
+            margin: 0 auto 2rem;
+            border-radius: 50%;
+            background: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            color: white;
+        }
+
+        .welcome-title {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #111827;
+            margin-bottom: 1rem;
+        }
+
+        .welcome-subtitle {
+            font-size: 1.25rem;
+            color: #6b7280;
+        }
+
+        .paused-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 0.5rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
     </style>
 </head>
+
 <body>
     <div id="root"></div>
+
     <script type="text/babel" src="components/StatusDisplay.js"></script>
     <script type="text/babel" src="components/SettingsPanel.js"></script>
     <script type="text/babel" src="utils/audioGuide.js"></script>
@@ -58,4 +225,5 @@
     <script type="text/babel" src="utils/modelAPI.js"></script>
     <script type="text/babel" src="app.js"></script>
 </body>
+
 </html>
