@@ -1,0 +1,47 @@
+
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Road-Crossing Assistant</title>
+
+
+    <!-- Tailwind CDN (brings back all your Tailwind classes) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+
+    <!-- Optional: small Tailwind config if you want -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: "#10b981",
+              danger: "#ef4444",
+              warning: "#f59e0b",
+            },
+          },
+        },
+      };
+    </script>
+
+
+    <!-- Lucide icon font (for icon-hand, icon-settings, etc.) -->
+    <link
+      href="https://resource.trickle.so/vendor_lib/unpkg/lucide-static@0.516.0/font/lucide.css"
+      rel="stylesheet"
+    />
+  </head>
+
+
+  <body class="bg-slate-900">
+    <div id="root"></div>
+
+
+    <!-- Vite entry point -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
